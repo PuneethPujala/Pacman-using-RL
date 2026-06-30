@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.DS_Store
+.gemini/
+.antigravity/
+.antigravity-ide/
+qtable.txt
+qtable copy.txt
+*.log
+node_modules/
+

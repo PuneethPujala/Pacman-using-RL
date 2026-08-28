@@ -139,7 +139,7 @@
 
           <!-- On-Canvas State Badge -->
           <div id="canvasAnnotation" class="absolute top-4 left-4 bg-[#0D1117]/90 backdrop-blur-xs border border-[#21262D] rounded px-2.5 py-1 text-[11px] font-mono text-[#C9D1D9] pointer-events-none">
-            Status: <span id="annotationText" class="text-[#3FB950]">Kiting / Dots Exploration</span>
+            Status: <span id="annotationText" class="text-[#3FB950]">Exploring Dots</span>
           </div>
 
           <!-- Game Over Modal -->
@@ -187,28 +187,13 @@
               <div class="text-[10px] text-[#8B949E]">Q(s, a) = &Sigma; w_i &times; f_i(s, a)</div>
             </div>
             <span id="chosenActionTag" class="text-xs px-2 py-0.5 rounded bg-[#161B22] text-[#3FB950] border border-[#3FB950]/30 font-bold">
-              WEST &bull; OPTIMAL
+              OPTIMAL ACTION
             </span>
           </div>
 
-          <!-- Q-value Action Rows -->
-          <div class="space-y-2 text-xs">
-            <div class="flex items-center justify-between py-1 px-2 rounded bg-[#05070A] border border-[#161B22]">
-              <span class="text-[#8B949E]">NORTH:</span>
-              <span id="qNorth" class="text-[#8B949E]">-124.5</span>
-            </div>
-            <div class="flex items-center justify-between py-1 px-2 rounded bg-[#05070A] border border-[#161B22]">
-              <span class="text-[#8B949E]">SOUTH:</span>
-              <span id="qSouth" class="text-[#8B949E]">-210.0</span>
-            </div>
-            <div class="flex items-center justify-between py-1 px-2 rounded bg-[#05070A] border border-[#161B22]">
-              <span class="text-[#8B949E]">EAST:</span>
-              <span id="qEast" class="text-[#F85149]">-450.8 (Ghost Hazard)</span>
-            </div>
-            <div class="flex items-center justify-between py-1 px-2 rounded bg-[#161B22] border border-[#3FB950]/30 text-[#3FB950] font-bold">
-              <span>WEST [CHOSEN]:</span>
-              <span id="qWest">+85.4</span>
-            </div>
+          <!-- Q-value Action Rows (Populated Dynamically) -->
+          <div id="actionList" class="space-y-2 text-xs">
+            <!-- Dynamically injected -->
           </div>
 
           <!-- Feature Decomposition for the Best Action -->
@@ -217,22 +202,7 @@
               Why Pacman Selected This Action (Decomposition)
             </div>
             <div id="featureDecomposition" class="space-y-1 text-[11px]">
-              <div class="flex justify-between text-[#8B949E]">
-                <span>+ eats-food:</span>
-                <span class="text-[#3FB950]">+96.54</span>
-              </div>
-              <div class="flex justify-between text-[#8B949E]">
-                <span>- closest-food (d=1):</span>
-                <span class="text-[#D29922]">-2.77</span>
-              </div>
-              <div class="flex justify-between text-[#8B949E]">
-                <span>- ghost-visible-approaching:</span>
-                <span class="text-[#8B949E]">0.00</span>
-              </div>
-              <div class="flex justify-between text-[#8B949E]">
-                <span>- trapped-in-dead-end:</span>
-                <span class="text-[#8B949E]">0.00 (Safe)</span>
-              </div>
+              <!-- Dynamically injected -->
             </div>
           </div>
         </div>
@@ -374,7 +344,7 @@
         "%.%..............%.%",
         "%.%.%%.%%  %%.%%.%.%",
         "%......%G  G%......%",
-        "%.%.%%.%%%%%%.%.%%.%",
+        "%.%.%%.%%%%%%.%%.%.%",
         "%.%..............%.%",
         "%.%%.%.%%%%%%.%.%%.%",
         "%....%...P....%...o%",
@@ -721,13 +691,29 @@
       const { qVals, bestAct, featDecomp } = evaluatePolicy();
       document.getElementById('chosenActionTag').innerText = `${bestAct ? bestAct.toUpperCase() : 'STOP'} • OPTIMAL`;
 
-      ['North', 'South', 'East', 'West'].forEach(act => {
-        const val = qVals[act];
-        const valEl = document.getElementById(`q${act}`);
-        if (valEl) {
-          valEl.innerText = val > -900 ? val.toFixed(1) : 'WALL';
-        }
-      });
+      // Render Action Q-values dynamically
+      const actionListEl = document.getElementById('actionList');
+      if (actionListEl) {
+        const acts = ['North', 'South', 'East', 'West'];
+        actionListEl.innerHTML = acts.map(act => {
+          const isBest = (act === bestAct);
+          const val = qVals[act];
+          const valStr = val > -900 ? (val > 0 ? `+${val.toFixed(1)}` : val.toFixed(1)) : 'WALL';
+          if (isBest) {
+            return `<div class="flex items-center justify-between py-1 px-2 rounded bg-[#161B22] border border-[#3FB950]/40 text-[#3FB950] font-bold">
+              <span>${act.toUpperCase()} [CHOSEN]:</span>
+              <span>${valStr}</span>
+            </div>`;
+          } else {
+            const isHazard = val < -300 && val > -900;
+            const textClass = isHazard ? 'text-[#F85149]' : 'text-[#8B949E]';
+            return `<div class="flex items-center justify-between py-1 px-2 rounded bg-[#05070A] border border-[#161B22]">
+              <span class="text-[#8B949E]">${act.toUpperCase()}:</span>
+              <span class="${textClass}">${valStr}${isHazard ? ' (Hazard)' : ''}</span>
+            </div>`;
+          }
+        }).join('');
+      }
 
       // Update decomposition list for bestAct
       const decompContainer = document.getElementById('featureDecomposition');
@@ -831,11 +817,22 @@
         }
       });
 
-      // Draw Pacman
+      // Draw Direction-Aware Animated Pacman
+      let baseAngle = 0;
+      if (pacman.dir === 'East') baseAngle = 0;
+      else if (pacman.dir === 'South') baseAngle = 0.5 * Math.PI;
+      else if (pacman.dir === 'West') baseAngle = Math.PI;
+      else if (pacman.dir === 'North') baseAngle = 1.5 * Math.PI;
+
+      const mouthAngle = isPlaying ? ((Math.sin(tickCount * 0.4) + 1) * 0.12 + 0.04) * Math.PI : 0.2 * Math.PI;
+      const startAngle = baseAngle + mouthAngle;
+      const endAngle = baseAngle + 2 * Math.PI - mouthAngle;
+
       ctx.fillStyle = '#E3B341';
       ctx.beginPath();
-      ctx.arc(px, py, CELL_SIZE / 2 - 3, 0.25 * Math.PI, 1.75 * Math.PI);
+      ctx.arc(px, py, CELL_SIZE / 2 - 3, startAngle, endAngle);
       ctx.lineTo(px, py);
+      ctx.closePath();
       ctx.fill();
 
       // Draw Ghosts

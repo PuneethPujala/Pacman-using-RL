@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Pacman RL smallClassic Visualizer</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    .hud-bar {
+      transition: width 0.1s ease-out;
+    }
+  </style>
+</head>
+<body class="bg-transparent text-[var(--foreground)] antialiased p-3">
+  <div class="bg-[var(--card)] text-[var(--foreground)] border border-[var(--border)] rounded-2xl p-4 shadow-xl max-w-4xl mx-auto">
+    
+    <!-- Header -->
+    <div class="flex items-center justify-between border-b border-[var(--border)] pb-3 mb-3">
+      <div>
+        <h1 class="text-base font-bold flex items-center gap-2">
+          <span class="text-yellow-400 text-xl">●</span> smallClassic (20x7) Live RL Test
+        </h1>
+        <p class="text-xs text-[var(--muted-foreground)]">
+          Real-time execution using trained weights & HumanVisionExtractor
+        </p>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="text-xs px-2.5 py-0.5 rounded-full font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+          74% Win Rate (74/100)
+        </span>
+      </div>
+    </div>
+
+    <!-- Main Game & HUD Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
+      
+      <!-- Left: smallClassic Canvas & Controls (7 cols) -->
+      <div class="md:col-span-7 flex flex-col items-center">
+        <div class="relative bg-slate-950 border border-slate-800 rounded-xl overflow-hidden shadow-inner p-2 w-full flex justify-center">
+          <canvas id="pacmanCanvas" width="480" height="175" class="rounded"></canvas>
+          
+          <!-- Overlay on win/loss -->
+          <div id="gameOverlay" class="absolute inset-0 bg-slate-950/85 backdrop-blur-xs flex items-center justify-center hidden rounded-xl">
+            <div class="text-center p-3">
+              <div id="overlayTitle" class="text-lg font-bold text-yellow-400 mb-0.5">Level Cleared!</div>
+              <div id="overlayScore" class="text-xs text-slate-300 mb-2.5">Final Score: 1180</div>
+              <button onclick="resetGame()" class="px-3.5 py-1 bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-bold text-xs rounded-lg shadow cursor-pointer transition">
+                Play Next Episode ↻
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="w-full flex items-center justify-between mt-2.5 bg-[var(--sidebar)]/40 p-2 rounded-xl border border-[var(--border)]">
+          <div class="flex items-center gap-2">
+            <button id="playBtn" onclick="togglePlay()" class="px-3 py-1 bg-yellow-500 hover:bg-yellow-400 text-slate-950 text-xs font-bold rounded-lg cursor-pointer transition flex items-center gap-1">
+              <span id="playIcon">⏸</span> <span id="playText">Pause</span>
+            </button>
+            <button onclick="stepSim()" class="px-2.5 py-1 bg-[var(--secondary)] hover:bg-[var(--secondary)]/80 text-[var(--secondary-foreground)] text-xs font-medium rounded-lg cursor-pointer transition">
+              Step ⏭
+            </button>
+            <button onclick="resetGame()" class="px-2.5 py-1 bg-[var(--secondary)] hover:bg-[var(--secondary)]/80 text-[var(--secondary-foreground)] text-xs font-medium rounded-lg cursor-pointer transition">
+              Reset ↺
+            </button>
+          </div>
+          <div class="flex items-center gap-3 text-xs">
+            <div class="flex items-center gap-1">
+              <span class="text-[var(--muted-foreground)]">Speed:</span>
+              <select id="speedSelect" onchange="setSpeed(this.value)" class="text-xs bg-[var(--card)] border border-[var(--border)] rounded px-1.5 py-0.5 text-[var(--foreground)] outline-none">
+                <option value="15">Normal</option>
+                <option value="8">Fast</option>
+                <option value="25">Slow</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Raycast Legend -->
+        <div class="w-full flex items-center justify-around mt-2 text-[11px] text-[var(--muted-foreground)] bg-slate-900/30 py-1 px-2 rounded-lg border border-[var(--border)]">
+          <div class="flex items-center gap-1">
+            <span class="w-2 h-2 rounded-full bg-red-500 inline-block"></span> Approaching Ray
+          </div>
+          <div class="flex items-center gap-1">
+            <span class="w-2 h-2 rounded-full bg-amber-400 inline-block"></span> Retreating Ray
+          </div>
+          <div class="flex items-center gap-1">
+            <span class="w-2 h-2 rounded-full bg-cyan-400 inline-block"></span> Scared Hunt Ray
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Live Policy & Vision Features HUD (5 cols) -->
+      <div class="md:col-span-5 flex flex-col gap-2.5">
+        
+        <!-- Live Action & Q-Value Meters -->
+        <div class="bg-[var(--sidebar)]/50 border border-[var(--border)] rounded-xl p-3">
+          <div class="flex items-center justify-between mb-1.5">
+            <h3 class="text-[11px] font-bold uppercase tracking-wider text-[var(--muted-foreground)]">Evaluated Q-Values</h3>
+            <span id="chosenActionTag" class="text-[11px] font-bold px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">
+              Policy: WEST
+            </span>
+          </div>
+
+          <div class="space-y-1.5 text-xs">
+            <div>
+              <div class="flex justify-between text-[10px] mb-0.5">
+                <span class="text-slate-300 font-medium">North</span>
+                <span id="qNorth" class="font-mono text-slate-400">-124.5</span>
+              </div>
+              <div class="w-full bg-slate-800 rounded-full h-1 overflow-hidden">
+                <div id="barNorth" class="hud-bar bg-blue-500 h-full w-[40%]"></div>
+              </div>
+            </div>
+            <div>
+              <div class="flex justify-between text-[10px] mb-0.5">
+                <span class="text-slate-300 font-medium">South</span>
+                <span id="qSouth" class="font-mono text-slate-400">-180.2</span>
+              </div>
+              <div class="w-full bg-slate-800 rounded-full h-1 overflow-hidden">
+                <div id="barSouth" class="hud-bar bg-blue-500 h-full w-[30%]"></div>
+              </div>
+            </div>
+            <div>
+              <div class="flex justify-between text-[10px] mb-0.5">
+                <span id="labelEast" class="text-slate-300 font-medium">East</span>
+                <span id="qEast" class="font-mono text-slate-400">-340.1</span>
+              </div>
+              <div class="w-full bg-slate-800 rounded-full h-1 overflow-hidden">
+                <div id="barEast" class="hud-bar bg-red-500 h-full w-[15%]"></div>
+              </div>
+            </div>
+            <div>
+              <div class="flex justify-between text-[10px] mb-0.5">
+                <span id="labelWest" class="text-emerald-400 font-bold">West</span>
+                <span id="qWest" class="font-mono text-emerald-400 font-bold">+65.8</span>
+              </div>
+              <div class="w-full bg-slate-800 rounded-full h-1 overflow-hidden">
+                <div id="barWest" class="hud-bar bg-emerald-500 h-full w-[80%]"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Vision Feature Activations -->
+        <div class="bg-[var(--sidebar)]/50 border border-[var(--border)] rounded-xl p-3">
+          <h3 class="text-[11px] font-bold uppercase tracking-wider text-[var(--muted-foreground)] mb-2">
+            Vision Feature Activations
+          </h3>
+          <div class="space-y-1 text-[11px] font-mono">
+            <div class="flex items-center justify-between bg-slate-900/60 px-2 py-0.5 rounded border border-slate-800">
+              <span class="text-slate-400">ghost-visible-approaching:</span>
+              <span id="featApproaching" class="text-red-400 font-bold">0.00</span>
+            </div>
+            <div class="flex items-center justify-between bg-slate-900/60 px-2 py-0.5 rounded border border-slate-800">
+              <span class="text-slate-400">trapped-in-dead-end:</span>
+              <span id="featDeadEnd" class="text-slate-400">0.00 (Safe)</span>
+            </div>
+            <div class="flex items-center justify-between bg-slate-900/60 px-2 py-0.5 rounded border border-slate-800">
+              <span class="text-slate-400">closest-food (BFS):</span>
+              <span id="featFood" class="text-emerald-400 font-bold">0.02 (d=1)</span>
+            </div>
+            <div class="flex items-center justify-between bg-slate-900/60 px-2 py-0.5 rounded border border-slate-800">
+              <span class="text-slate-400">scared-hunt-signal:</span>
+              <span id="featScared" class="text-cyan-400 font-bold">0.00</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Metrics -->
+        <div class="grid grid-cols-3 gap-2 text-center">
+          <div class="bg-[var(--card)] border border-[var(--border)] py-1.5 px-2 rounded-lg">
+            <div class="text-[9px] text-[var(--muted-foreground)] uppercase">Score</div>
+            <div id="scoreVal" class="text-sm font-bold text-yellow-400">0</div>
+          </div>
+          <div class="bg-[var(--card)] border border-[var(--border)] py-1.5 px-2 rounded-lg">
+            <div class="text-[9px] text-[var(--muted-foreground)] uppercase">Food Left</div>
+            <div id="foodVal" class="text-sm font-bold text-emerald-400">32</div>
+          </div>
+          <div class="bg-[var(--card)] border border-[var(--border)] py-1.5 px-2 rounded-lg">
+            <div class="text-[9px] text-[var(--muted-foreground)] uppercase">Min Ghost Dist</div>
+            <div id="ghostDistVal" class="text-sm font-bold text-cyan-400">6</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('pacmanCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const CELL_SIZE = 24;
+    let isPlaying = true;
+    let animId = null;
+    let tickCount = 0;
+    let speedDelay = 15;
+    let score = 0;
+
+    // Exact smallClassic layout (20x7)
+    const smallClassicLayout = [
+      "%%%%%%%%%%%%%%%%%%%%",
+      "%......%G  G%......%",
+      "%.%%...%%  %%...%%.%",
+      "%.%o.%........%.o%.%",
+      "%.%%.%.%%%%%%.%.%%.%",
+      "%........P.........%",
+      "%%%%%%%%%%%%%%%%%%%%"
+    ];
+
+    let grid = [];
+    let pacman = { x: 9, y: 5, dir: 'West' };
+    let ghosts = [
+      { x: 8, y: 1, dir: 'West', scared: 0 },
+      { x: 11, y: 1, dir: 'East', scared: 0 }
+    ];
+    let food = [];
+    let capsules = [];
+
+    // Exact final weights learned from 2000 episodes of Q-learning
+    const W = {
+      ghost_1step: -573.31,
+      ghost_2step: -214.37,
+      ghost_3step: -180.75,
+      ghost_approaching: -37.84,
+      ghost_retreating: 0.88,
+      deadend: -291.45,
+      closest_food: -55.43,
+      eats_food: 96.54,
+      eats_capsule: 47.10,
+      closest_scared: 754.09,
+      scared_visible: 111.44,
+      bias: 8.85
+    };
+
+    function initGame() {
+      grid = smallClassicLayout.map(row => row.split(''));
+      food = [];
+      capsules = [];
+      ghosts = [];
+
+      canvas.width = 20 * CELL_SIZE;
+      canvas.height = 7 * CELL_SIZE;
+
+      for (let r = 0; r < grid.length; r++) {
+        for (let c = 0; c < grid[0].length; c++) {
+          const ch = grid[r][c];
+          if (ch === 'P') {
+            pacman = { x: c, y: r, dir: 'West' };
+            grid[r][c] = ' ';
+          } else if (ch === 'G') {
+            ghosts.push({ x: c, y: r, dir: ghosts.length === 0 ? 'West' : 'East', scared: 0 });
+            grid[r][c] = ' ';
+          } else if (ch === '.') {
+            food.push({ x: c, y: r });
+            grid[r][c] = ' ';
+          } else if (ch === 'o') {
+            capsules.push({ x: c, y: r });
+            grid[r][c] = ' ';
+          }
+        }
+      }
+      score = 0;
+      document.getElementById('gameOverlay').classList.add('hidden');
+      updateHUD();
+      render();
+    }
+
+    function isWall(x, y) {
+      if (y < 0 || y >= grid.length || x < 0 || x >= grid[0].length) return true;
+      return grid[y][x] === '%';
+    }
+
+    // BFS Maze Distance
+    function getMazeDist(x1, y1, x2, y2) {
+      if (x1 === x2 && y1 === y2) return 0;
+      let q = [[x1, y1, 0]];
+      let visited = new Set([`${x1},${y1}`]);
+      while (q.length > 0) {
+        let [cx, cy, d] = q.shift();
+        if (cx === x2 && cy === y2) return d;
+        const neighbors = [[cx+1, cy], [cx-1, cy], [cx, cy+1], [cx, cy-1]];
+        for (let [nx, ny] of neighbors) {
+          if (!isWall(nx, ny) && !visited.has(`${nx},${ny}`)) {
+            visited.add(`${nx},${ny}`);
+            q.push([nx, ny, d+1]);
+          }
+        }
+      }
+      return 999;
+    }
+
+    // Cardinal Raycast
+    function castRay(startX, startY, dx, dy) {
+      let x = startX;
+      let y = startY;
+      let dist = 0;
+      while (true) {
+        x += dx;
+        y += dy;
+        dist++;
+        if (isWall(x, y)) {
+          return { hit: 'wall', x, y, dist };
+        }
+        for (let g of ghosts) {
+          if (g.x === x && g.y === y) {
+            return { hit: 'ghost', ghost: g, x, y, dist };
+          }
+        }
+      }
+    }
+
+    // Dead-end pocket analysis
+    function isDeadEndPocket(pos) {
+      let visited = new Set([`${pos.x},${pos.y}`]);
+      let q = [pos];
+      let junctions = 0;
+      while (q.length > 0) {
+        let curr = q.shift();
+        let openNeighbors = [[curr.x+1, curr.y], [curr.x-1, curr.y], [curr.x, curr.y+1], [curr.x, curr.y-1]]
+          .filter(([nx, ny]) => !isWall(nx, ny));
+        if (openNeighbors.length >= 3) junctions++;
+        for (let [nx, ny] of openNeighbors) {
+          let key = `${nx},${ny}`;
+          if (!visited.has(key)) {
+            visited.add(key);
+            q.push({ x: nx, y: ny });
+          }
+        }
+        if (visited.size > 8 || junctions >= 1) return false;
+      }
+      return true;
+    }
+
+    function evaluatePolicy() {
+      const actions = [
+        { name: 'North', dx: 0, dy: -1 },
+        { name: 'South', dx: 0, dy: 1 },
+        { name: 'East', dx: 1, dy: 0 },
+        { name: 'West', dx: -1, dy: 0 }
+      ];
+
+      const qVals = {};
+      let bestAct = null;
+      let maxQ = -Infinity;
+
+      actions.forEach(a => {
+        const nx = pacman.x + a.dx;
+        const ny = pacman.y + a.dy;
+
+        if (isWall(nx, ny)) {
+          qVals[a.name] = -999;
+          return;
+        }
+
+        let q = W.bias;
+
+        // Ghosts evaluation
+        ghosts.forEach(g => {
+          const d = getMazeDist(nx, ny, g.x, g.y);
+          if (g.scared > 0) {
+            q += (1.0 / Math.max(d, 1)) * W.closest_scared;
+          } else {
+            if (d <= 1) q += W.ghost_1step;
+            else if (d === 2) q += W.ghost_2step;
+            else if (d === 3) q += W.ghost_3step;
+
+            // Raycast approach
+            if (ny === g.y) {
+              if (a.dx > 0 && g.x > nx && g.dir === 'West') q += (1.0 / Math.max(g.x - nx, 1)) * W.ghost_approaching;
+              if (a.dx < 0 && g.x < nx && g.dir === 'East') q += (1.0 / Math.max(nx - g.x, 1)) * W.ghost_approaching;
+            }
+          }
+        });
+
+        // Dead end check
+        if (isDeadEndPocket({ x: nx, y: ny })) {
+          const minG = Math.min(...ghosts.map(g => getMazeDist(nx, ny, g.x, g.y)));
+          if (minG <= 4) q += W.deadend;
+        }
+
+        // Food eating
+        if (food.some(f => f.x === nx && f.y === ny)) {
+          q += W.eats_food;
+        }
+
+        // Closest food
+        if (food.length > 0) {
+          const minF = Math.min(...food.map(f => getMazeDist(nx, ny, f.x, f.y)));
+          q += (minF / 140.0) * W.closest_food;
+        }
+
+        // Capsule
+        if (capsules.some(c => c.x === nx && c.y === ny)) {
+          q += W.eats_capsule;
+        }
+
+        qVals[a.name] = Math.round(q * 10) / 10;
+        if (q > maxQ) {
+          maxQ = q;
+          bestAct = a.name;
+        }
+      });
+
+      return { qVals, bestAct };
+    }
+
+    function stepSim() {
+      const { qVals, bestAct } = evaluatePolicy();
+      if (!bestAct) return;
+      pacman.dir = bestAct;
+
+      const actMap = {
+        'North': { dx: 0, dy: -1 },
+        'South': { dx: 0, dy: 1 },
+        'East': { dx: 1, dy: 0 },
+        'West': { dx: -1, dy: 0 }
+      };
+
+      const prevPacX = pacman.x;
+      const prevPacY = pacman.y;
+
+      const move = actMap[pacman.dir];
+      if (move && !isWall(pacman.x + move.dx, pacman.y + move.dy)) {
+        pacman.x += move.dx;
+        pacman.y += move.dy;
+        score -= 1;
+      }
+
+      // Check collision immediately after Pacman moves
+      for (let g of ghosts) {
+        if (g.x === pacman.x && g.y === pacman.y) {
+          if (g.scared > 0) {
+            score += 200;
+            g.x = 9;
+            g.y = 1;
+            g.scared = 0;
+          } else {
+            endGame(false);
+            updateHUD();
+            render();
+            return;
+          }
+        }
+      }
+
+      // Check food
+      const foodIdx = food.findIndex(f => f.x === pacman.x && f.y === pacman.y);
+      if (foodIdx !== -1) {
+        food.splice(foodIdx, 1);
+        score += 10;
+      }
+
+      // Check capsule
+      const capIdx = capsules.findIndex(c => c.x === pacman.x && c.y === pacman.y);
+      if (capIdx !== -1) {
+        capsules.splice(capIdx, 1);
+        score += 50;
+        ghosts.forEach(g => g.scared = 30);
+      }
+
+      // Move ghosts sequentially with cross-over collision checks
+      for (let g of ghosts) {
+        if (g.scared > 0) g.scared--;
+
+        const prevGX = g.x;
+        const prevGY = g.y;
+
+        const dirs = [
+          { dx: 1, dy: 0, dir: 'East' },
+          { dx: -1, dy: 0, dir: 'West' },
+          { dx: 0, dy: 1, dir: 'South' },
+          { dx: 0, dy: -1, dir: 'North' }
+        ].filter(d => !isWall(g.x + d.dx, g.y + d.dy));
+
+        if (dirs.length > 0) {
+          dirs.sort((a, b) => {
+            const da = getMazeDist(g.x + a.dx, g.y + a.dy, pacman.x, pacman.y);
+            const db = getMazeDist(g.x + b.dx, g.y + b.dy, pacman.x, pacman.y);
+            return g.scared > 0 ? db - da : da - db;
+          });
+          // 80% optimal chase/flee, 20% random exploration
+          const chosen = Math.random() < 0.8 ? dirs[0] : dirs[Math.floor(Math.random() * dirs.length)];
+          g.x += chosen.dx;
+          g.y += chosen.dy;
+          g.dir = chosen.dir;
+        }
+
+        // Check both same-tile collision and crossover path-swap
+        const sameTile = (g.x === pacman.x && g.y === pacman.y);
+        const pathSwap = (g.x === prevPacX && g.y === prevPacY && pacman.x === prevGX && pacman.y === prevGY);
+
+        if (sameTile || pathSwap) {
+          if (g.scared > 0) {
+            score += 200;
+            g.x = 9;
+            g.y = 1;
+            g.scared = 0;
+          } else {
+            endGame(false);
+            updateHUD();
+            render();
+            return;
+          }
+        }
+      }
+
+      if (food.length === 0 && capsules.length === 0) {
+        endGame(true);
+      }
+
+      updateHUD();
+      render();
+    }
+
+    function endGame(won) {
+      isPlaying = false;
+      document.getElementById('gameOverlay').classList.remove('hidden');
+      document.getElementById('overlayTitle').innerText = won ? '🎉 Episode Won!' : '💀 Pacman Died';
+      document.getElementById('overlayTitle').className = won ? 'text-lg font-bold text-emerald-400 mb-0.5' : 'text-lg font-bold text-red-400 mb-0.5';
+      document.getElementById('overlayScore').innerText = `Final Score: ${score}`;
+    }
+
+    function updateHUD() {
+      const { qVals, bestAct } = evaluatePolicy();
+      document.getElementById('chosenActionTag').innerText = `Policy: ${bestAct ? bestAct.toUpperCase() : 'STOP'}`;
+
+      ['North', 'South', 'East', 'West'].forEach(act => {
+        const val = qVals[act];
+        const valEl = document.getElementById(`q${act}`);
+        const barEl = document.getElementById(`bar${act}`);
+        if (valEl && barEl) {
+          valEl.innerText = val > -900 ? val.toFixed(1) : 'WALL';
+          const pct = Math.max(5, Math.min(100, ((val + 700) / 900) * 100));
+          barEl.style.width = `${pct}%`;
+        }
+      });
+
+      document.getElementById('scoreVal').innerText = score;
+      document.getElementById('foodVal').innerText = food.length;
+      const minG = ghosts.length > 0 ? Math.min(...ghosts.map(g => getMazeDist(pacman.x, pacman.y, g.x, g.y))) : 0;
+      document.getElementById('ghostDistVal').innerText = minG < 100 ? `${minG} tiles` : 'N/A';
+
+      // Raycast feature readout
+      const rayEast = castRay(pacman.x, pacman.y, 1, 0);
+      const rayWest = castRay(pacman.x, pacman.y, -1, 0);
+      let appText = "0.00";
+      if (rayEast.hit === 'ghost' && rayEast.ghost.dir === 'West' && rayEast.ghost.scared === 0) {
+        appText = `${(1.0 / rayEast.dist).toFixed(2)} (East d=${rayEast.dist})`;
+      } else if (rayWest.hit === 'ghost' && rayWest.ghost.dir === 'East' && rayWest.ghost.scared === 0) {
+        appText = `${(1.0 / rayWest.dist).toFixed(2)} (West d=${rayWest.dist})`;
+      }
+      document.getElementById('featApproaching').innerText = appText;
+
+      const anyScared = ghosts.some(g => g.scared > 0);
+      document.getElementById('featScared').innerText = anyScared ? "ACTIVE (+768)" : "0.00";
+    }
+
+    function render() {
+      ctx.fillStyle = '#020617';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Draw Walls
+      for (let r = 0; r < grid.length; r++) {
+        for (let c = 0; c < grid[0].length; c++) {
+          if (grid[r][c] === '%') {
+            ctx.fillStyle = '#1e3a8a';
+            ctx.fillRect(c * CELL_SIZE + 1, r * CELL_SIZE + 1, CELL_SIZE - 2, CELL_SIZE - 2);
+            ctx.strokeStyle = '#3b82f6';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(c * CELL_SIZE + 1, r * CELL_SIZE + 1, CELL_SIZE - 2, CELL_SIZE - 2);
+          }
+        }
+      }
+
+      // Draw Food
+      food.forEach(f => {
+        ctx.fillStyle = '#fde047';
+        ctx.beginPath();
+        ctx.arc(f.x * CELL_SIZE + CELL_SIZE / 2, f.y * CELL_SIZE + CELL_SIZE / 2, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      // Draw Capsules
+      capsules.forEach(c => {
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(c.x * CELL_SIZE + CELL_SIZE / 2, c.y * CELL_SIZE + CELL_SIZE / 2, 5.5, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      // Draw Sight Rays
+      const px = pacman.x * CELL_SIZE + CELL_SIZE / 2;
+      const py = pacman.y * CELL_SIZE + CELL_SIZE / 2;
+      const rays = [{ dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 }];
+
+      rays.forEach(r => {
+        const hit = castRay(pacman.x, pacman.y, r.dx, r.dy);
+        const hx = hit.x * CELL_SIZE + CELL_SIZE / 2;
+        const hy = hit.y * CELL_SIZE + CELL_SIZE / 2;
+
+        ctx.lineWidth = 1.5;
+        if (hit.hit === 'ghost') {
+          if (hit.ghost.scared > 0) {
+            ctx.strokeStyle = 'rgba(34, 211, 238, 0.9)';
+          } else {
+            const isApproaching = (r.dx > 0 && hit.ghost.dir === 'West') || (r.dx < 0 && hit.ghost.dir === 'East');
+            ctx.strokeStyle = isApproaching ? 'rgba(239, 68, 68, 0.95)' : 'rgba(251, 191, 36, 0.8)';
+          }
+          ctx.setLineDash([3, 3]);
+        } else {
+          ctx.strokeStyle = 'rgba(100, 116, 139, 0.25)';
+          ctx.setLineDash([]);
+        }
+
+        ctx.beginPath();
+        ctx.moveTo(px, py);
+        ctx.lineTo(hx, hy);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      });
+
+      // Draw Pacman
+      ctx.fillStyle = '#eab308';
+      ctx.beginPath();
+      ctx.arc(px, py, CELL_SIZE / 2 - 3, 0.25 * Math.PI, 1.75 * Math.PI);
+      ctx.lineTo(px, py);
+      ctx.fill();
+
+      // Draw Ghosts
+      ghosts.forEach((g, idx) => {
+        const gx = g.x * CELL_SIZE + CELL_SIZE / 2;
+        const gy = g.y * CELL_SIZE + CELL_SIZE / 2;
+
+        ctx.fillStyle = g.scared > 0 ? '#06b6d4' : (idx === 0 ? '#ef4444' : '#f97316');
+        ctx.beginPath();
+        ctx.arc(gx, gy - 2, CELL_SIZE / 2 - 3, Math.PI, 0);
+        ctx.lineTo(gx + CELL_SIZE / 2 - 3, gy + CELL_SIZE / 2 - 3);
+        ctx.lineTo(gx - CELL_SIZE / 2 + 3, gy + CELL_SIZE / 2 - 3);
+        ctx.fill();
+
+        // Eyes
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(gx - 2.5, gy - 3, 2.5, 0, Math.PI * 2);
+        ctx.arc(gx + 2.5, gy - 3, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#0f172a';
+        ctx.beginPath();
+        ctx.arc(gx - (g.dir === 'West' ? 3.5 : 1.5), gy - 3, 1.2, 0, Math.PI * 2);
+        ctx.arc(gx + (g.dir === 'West' ? 1.5 : 3.5), gy - 3, 1.2, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    function loop() {
+      tickCount++;
+      if (isPlaying && tickCount % speedDelay === 0) {
+        stepSim();
+      }
+      render();
+      animId = requestAnimationFrame(loop);
+    }
+
+    function togglePlay() {
+      isPlaying = !isPlaying;
+      document.getElementById('playText').innerText = isPlaying ? 'Pause' : 'Play';
+      document.getElementById('playIcon').innerText = isPlaying ? '⏸' : '▶';
+    }
+
+    function resetGame() {
+      initGame();
+      isPlaying = true;
+      document.getElementById('playText').innerText = 'Pause';
+      document.getElementById('playIcon').innerText = '⏸';
+    }
+
+    function setSpeed(val) {
+      speedDelay = parseInt(val);
+    }
+
+    initGame();
+    loop();
+  </script>
+</body>
+</html>

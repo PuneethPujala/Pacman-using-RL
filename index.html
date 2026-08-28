@@ -1,249 +1,576 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
   <meta charset="UTF-8">
-  <title>Pacman RL smallClassic Visualizer</title>
-  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
-  <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pacman RL — Spatial Vision & Deep Q-Learning</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          boxShadow: {
+            'glow-yellow': '0 0 25px -5px rgba(250, 204, 21, 0.4)',
+            'glow-cyan': '0 0 25px -5px rgba(6, 182, 212, 0.4)',
+            'glow-red': '0 0 25px -5px rgba(239, 68, 68, 0.4)',
+          }
+        }
+      }
     }
-    .hud-bar {
-      transition: width 0.1s ease-out;
+  </script>
+  <style>
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #070B14; }
+    ::-webkit-scrollbar-thumb { background: #1E293B; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #334155; }
+    .hud-bar { transition: width 0.12s cubic-bezier(0.4, 0, 0.2, 1); }
+    .bg-radial-glow {
+      background: radial-gradient(circle at 50% 0%, rgba(30, 58, 138, 0.3) 0%, rgba(7, 11, 20, 0) 70%);
+    }
+    .grid-pattern {
+      background-size: 32px 32px;
+      background-image: 
+        linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
     }
   </style>
 </head>
-<body class="bg-transparent text-[var(--foreground)] antialiased p-3">
-  <div class="bg-[var(--card)] text-[var(--foreground)] border border-[var(--border)] rounded-2xl p-4 shadow-xl max-w-4xl mx-auto">
-    
-    <!-- Header -->
-    <div class="flex items-center justify-between border-b border-[var(--border)] pb-3 mb-3">
-      <div>
-        <h1 class="text-base font-bold flex items-center gap-2">
-          <span class="text-yellow-400 text-xl">●</span> smallClassic (20x7) Live RL Test
-        </h1>
-        <p class="text-xs text-[var(--muted-foreground)]">
-          Real-time execution using trained weights & HumanVisionExtractor
-        </p>
+<body class="bg-[#070B14] text-slate-100 min-h-screen font-sans antialiased selection:bg-yellow-400 selection:text-black grid-pattern">
+
+  <!-- Ambient Background Glow -->
+  <div class="fixed top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[450px] bg-radial-glow pointer-events-none z-0"></div>
+
+  <!-- Top Navigation -->
+  <header class="sticky top-0 z-50 backdrop-blur-md bg-[#070B14]/85 border-b border-slate-800/80">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-yellow-400/10 border border-yellow-400/30 flex items-center justify-center text-yellow-400 font-black text-xl shadow-glow-yellow">
+          ●
+        </div>
+        <div>
+          <span class="font-extrabold text-lg tracking-tight bg-gradient-to-r from-yellow-400 via-amber-200 to-white bg-clip-text text-transparent">
+            Pacman RL
+          </span>
+          <span class="text-[10px] uppercase font-mono px-2 py-0.5 ml-2 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-semibold">
+            HumanVision v2.0
+          </span>
+        </div>
       </div>
-      <div class="flex items-center gap-2">
-        <span class="text-xs px-2.5 py-0.5 rounded-full font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-          74% Win Rate (74/100)
-        </span>
+
+      <nav class="hidden md:flex items-center gap-6 text-sm font-medium text-slate-300">
+        <a href="#arena" class="hover:text-yellow-400 transition">Live Arena</a>
+        <a href="#benchmarks" class="hover:text-yellow-400 transition">Benchmarks</a>
+        <a href="#architecture" class="hover:text-yellow-400 transition">Architecture</a>
+        <a href="#weights" class="hover:text-yellow-400 transition">Weight Inspector</a>
+      </nav>
+
+      <div class="flex items-center gap-3">
+        <a href="https://github.com/PuneethPujala/Pacman-using-RL" target="_blank" class="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-xs font-semibold text-white shadow-sm transition">
+          <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+          <span>Star on GitHub</span>
+        </a>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="relative z-10 pt-12 pb-8 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto text-center">
+    <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold mb-5">
+      <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+      Trained Policy: 86% Win Rate on mediumClassic &bull; 76% on smallClassic
+    </div>
+    <h1 class="text-3xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-white mb-4 leading-tight">
+      Spatial Vision & Deep RL for <span class="bg-gradient-to-r from-yellow-400 via-amber-300 to-yellow-500 bg-clip-text text-transparent">Pacman</span>
+    </h1>
+    <p class="max-w-2xl mx-auto text-sm sm:text-base text-slate-400 mb-8 leading-relaxed">
+      Autonomous Approximate Q-Learning equipped with <strong class="text-slate-200">Cardinal Raycasting</strong>, <strong class="text-slate-200">Turn-Aware Topology Escape Analysis</strong>, and <strong class="text-slate-200">BFS Maze Danger Gradients</strong>.
+    </p>
+
+    <!-- Key Metrics Grid -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3.5 max-w-4xl mx-auto mb-8 text-left">
+      <div class="p-4 rounded-2xl bg-slate-900/70 border border-slate-800 backdrop-blur-xs">
+        <div class="text-2xl sm:text-3xl font-extrabold text-emerald-400 font-mono">86.0%</div>
+        <div class="text-xs text-slate-400 font-medium mt-1">mediumClassic Win Rate</div>
+      </div>
+      <div class="p-4 rounded-2xl bg-slate-900/70 border border-slate-800 backdrop-blur-xs">
+        <div class="text-2xl sm:text-3xl font-extrabold text-yellow-400 font-mono">+1,913</div>
+        <div class="text-xs text-slate-400 font-medium mt-1">Peak Game Score</div>
+      </div>
+      <div class="p-4 rounded-2xl bg-slate-900/70 border border-slate-800 backdrop-blur-xs">
+        <div class="text-2xl sm:text-3xl font-extrabold text-cyan-400 font-mono">12</div>
+        <div class="text-xs text-slate-400 font-medium mt-1">Learned Vision Weights</div>
+      </div>
+      <div class="p-4 rounded-2xl bg-slate-900/70 border border-slate-800 backdrop-blur-xs">
+        <div class="text-2xl sm:text-3xl font-extrabold text-purple-400 font-mono">&lt; 0.03s</div>
+        <div class="text-xs text-slate-400 font-medium mt-1">Inference Latency</div>
       </div>
     </div>
+  </section>
 
-    <!-- Main Game & HUD Grid -->
-    <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
+  <!-- Interactive Testing Arena Section -->
+  <main id="arena" class="relative z-10 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto pb-16">
+    <div class="bg-slate-900/85 border border-slate-800 rounded-3xl p-5 sm:p-7 shadow-2xl backdrop-blur-md">
       
-      <!-- Left: smallClassic Canvas & Controls (7 cols) -->
-      <div class="md:col-span-7 flex flex-col items-center">
-        <div class="relative bg-slate-950 border border-slate-800 rounded-xl overflow-hidden shadow-inner p-2 w-full flex justify-center">
-          <canvas id="pacmanCanvas" width="480" height="175" class="rounded"></canvas>
-          
-          <!-- Overlay on win/loss -->
-          <div id="gameOverlay" class="absolute inset-0 bg-slate-950/85 backdrop-blur-xs flex items-center justify-center hidden rounded-xl">
-            <div class="text-center p-3">
-              <div id="overlayTitle" class="text-lg font-bold text-yellow-400 mb-0.5">Level Cleared!</div>
-              <div id="overlayScore" class="text-xs text-slate-300 mb-2.5">Final Score: 1180</div>
-              <button onclick="resetGame()" class="px-3.5 py-1 bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-bold text-xs rounded-lg shadow cursor-pointer transition">
-                Play Next Episode ↻
+      <!-- Arena Header Controls -->
+      <div class="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 pb-5 border-b border-slate-800 mb-6">
+        <div>
+          <h2 class="text-xl font-bold text-white flex items-center gap-2.5">
+            <span>🕹️ Live RL Testing Arena</span>
+            <span id="currentMapBadge" class="text-xs font-mono px-2.5 py-0.5 rounded-full bg-yellow-400/10 text-yellow-400 border border-yellow-400/20">
+              smallClassic (20x7)
+            </span>
+          </h2>
+          <p class="text-xs text-slate-400 mt-1">
+            Watch the trained Q-learning policy make real-time decisions with live raycast sight lines
+          </p>
+        </div>
+
+        <!-- Controls Toolbar -->
+        <div class="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
+          <!-- Layout Select -->
+          <div class="flex items-center gap-1.5 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800 text-xs">
+            <span class="text-slate-400 font-medium">Layout:</span>
+            <select id="layoutSelect" onchange="changeLayout(this.value)" class="bg-transparent text-yellow-400 font-semibold outline-none cursor-pointer">
+              <option value="smallClassic" class="bg-slate-900 text-white">smallClassic (20x7)</option>
+              <option value="mediumClassic" class="bg-slate-900 text-white">mediumClassic (20x11)</option>
+              <option value="corridorKite" class="bg-slate-900 text-white">2-Step Alley Kiting</option>
+              <option value="deadEndEscape" class="bg-slate-900 text-white">L-Turn vs Cul-de-Sac</option>
+            </select>
+          </div>
+
+          <!-- Ghost AI Select -->
+          <div class="flex items-center gap-1.5 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800 text-xs">
+            <span class="text-slate-400 font-medium">Ghost AI:</span>
+            <select id="ghostAiSelect" onchange="changeGhostAI(this.value)" class="bg-transparent text-cyan-400 font-semibold outline-none cursor-pointer">
+              <option value="random" class="bg-slate-900 text-white">RandomGhost (Default)</option>
+              <option value="intelligent" class="bg-slate-900 text-white">DirectionalGhost (Hunter)</option>
+            </select>
+          </div>
+
+          <!-- Raycast Toggle -->
+          <button id="raycastToggleBtn" onclick="toggleRaycasts()" class="px-3 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-xs font-semibold text-slate-300 transition flex items-center gap-1.5">
+            <span id="raycastStatusDot" class="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span>
+            <span>Raycasts: ON</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Main Canvas & Dashboard Grid -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        
+        <!-- Left: Game Viewport (7 Cols) -->
+        <div class="lg:col-span-7 flex flex-col items-center">
+          <div class="w-full relative bg-[#020617] border border-slate-800/80 rounded-2xl overflow-hidden shadow-2xl p-3 flex flex-col items-center justify-center min-h-[260px]">
+            <canvas id="pacmanCanvas" class="rounded max-w-full"></canvas>
+
+            <!-- Game Over / Victory Modal -->
+            <div id="gameOverlay" class="absolute inset-0 bg-[#020617]/90 backdrop-blur-sm flex items-center justify-center hidden rounded-2xl z-20">
+              <div class="text-center p-6 max-w-xs">
+                <div id="overlayIcon" class="text-4xl mb-2">🎉</div>
+                <div id="overlayTitle" class="text-xl font-black text-emerald-400 mb-1">Level Cleared!</div>
+                <div id="overlayScore" class="text-xs text-slate-300 mb-4 font-mono">Final Score: 1540</div>
+                <button onclick="resetGame()" class="w-full px-4 py-2 bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-bold text-xs rounded-xl shadow-glow-yellow cursor-pointer transition">
+                  Play Next Game ↻
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Playback Actions -->
+          <div class="w-full flex flex-wrap items-center justify-between gap-3 mt-3.5 bg-slate-950/60 p-3 rounded-2xl border border-slate-800">
+            <div class="flex items-center gap-2">
+              <button id="playBtn" onclick="togglePlay()" class="px-4 py-2 bg-yellow-400 hover:bg-yellow-300 text-slate-950 text-xs font-bold rounded-xl shadow-glow-yellow cursor-pointer transition flex items-center gap-1.5">
+                <span id="playIcon">⏸</span> <span id="playText">Pause</span>
+              </button>
+              <button onclick="stepSim()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl cursor-pointer transition">
+                Step ⏭
+              </button>
+              <button onclick="resetGame()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl cursor-pointer transition">
+                Restart ↺
               </button>
             </div>
-          </div>
-        </div>
 
-        <!-- Controls -->
-        <div class="w-full flex items-center justify-between mt-2.5 bg-[var(--sidebar)]/40 p-2 rounded-xl border border-[var(--border)]">
-          <div class="flex items-center gap-2">
-            <button id="playBtn" onclick="togglePlay()" class="px-3 py-1 bg-yellow-500 hover:bg-yellow-400 text-slate-950 text-xs font-bold rounded-lg cursor-pointer transition flex items-center gap-1">
-              <span id="playIcon">⏸</span> <span id="playText">Pause</span>
-            </button>
-            <button onclick="stepSim()" class="px-2.5 py-1 bg-[var(--secondary)] hover:bg-[var(--secondary)]/80 text-[var(--secondary-foreground)] text-xs font-medium rounded-lg cursor-pointer transition">
-              Step ⏭
-            </button>
-            <button onclick="resetGame()" class="px-2.5 py-1 bg-[var(--secondary)] hover:bg-[var(--secondary)]/80 text-[var(--secondary-foreground)] text-xs font-medium rounded-lg cursor-pointer transition">
-              Reset ↺
-            </button>
+            <div class="flex items-center gap-3">
+              <span class="text-xs text-slate-400">Speed:</span>
+              <div class="flex bg-slate-900 rounded-lg p-1 border border-slate-800 text-xs">
+                <button onclick="setSpeed(28)" id="speedSlow" class="px-2 py-0.5 rounded text-slate-400 hover:text-white">Slow</button>
+                <button onclick="setSpeed(14)" id="speedNormal" class="px-2 py-0.5 rounded bg-yellow-400 text-slate-950 font-bold">Normal</button>
+                <button onclick="setSpeed(6)" id="speedFast" class="px-2 py-0.5 rounded text-slate-400 hover:text-white">Fast</button>
+              </div>
+            </div>
           </div>
-          <div class="flex items-center gap-3 text-xs">
-            <div class="flex items-center gap-1">
-              <span class="text-[var(--muted-foreground)]">Speed:</span>
-              <select id="speedSelect" onchange="setSpeed(this.value)" class="text-xs bg-[var(--card)] border border-[var(--border)] rounded px-1.5 py-0.5 text-[var(--foreground)] outline-none">
-                <option value="15">Normal</option>
-                <option value="8">Fast</option>
-                <option value="25">Slow</option>
-              </select>
+
+          <!-- Raycast Legend Bar -->
+          <div class="w-full grid grid-cols-3 gap-2 mt-3 text-[11px] text-slate-400 bg-slate-950/40 py-2 px-3 rounded-xl border border-slate-800/60 text-center">
+            <div class="flex items-center justify-center gap-1.5">
+              <span class="w-2.5 h-2.5 rounded-full bg-red-500 inline-block shadow-glow-red"></span> Approaching Ray
+            </div>
+            <div class="flex items-center justify-center gap-1.5">
+              <span class="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block"></span> Retreating Ray
+            </div>
+            <div class="flex items-center justify-center gap-1.5">
+              <span class="w-2.5 h-2.5 rounded-full bg-cyan-400 inline-block shadow-glow-cyan"></span> Scared Hunt Ray
             </div>
           </div>
         </div>
 
-        <!-- Raycast Legend -->
-        <div class="w-full flex items-center justify-around mt-2 text-[11px] text-[var(--muted-foreground)] bg-slate-900/30 py-1 px-2 rounded-lg border border-[var(--border)]">
-          <div class="flex items-center gap-1">
-            <span class="w-2 h-2 rounded-full bg-red-500 inline-block"></span> Approaching Ray
+        <!-- Right: Real-Time AI Telemetry & Q-Values (5 Cols) -->
+        <div class="lg:col-span-5 flex flex-col gap-4">
+          
+          <!-- Q-Value Meter Card -->
+          <div class="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 shadow-sm">
+            <div class="flex items-center justify-between mb-3">
+              <div>
+                <h3 class="text-xs font-extrabold uppercase tracking-wider text-slate-400">Evaluated Action Q-Values</h3>
+                <p class="text-[10px] text-slate-500">$Q(s, a) = \sum w_i f_i(s, a)$</p>
+              </div>
+              <span id="chosenActionTag" class="text-xs font-mono font-bold px-2.5 py-1 rounded-lg bg-yellow-400/10 text-yellow-400 border border-yellow-400/30">
+                Action: WEST
+              </span>
+            </div>
+
+            <div class="space-y-2.5 text-xs">
+              <div>
+                <div class="flex justify-between text-[11px] mb-1">
+                  <span class="text-slate-300 font-semibold">North</span>
+                  <span id="qNorth" class="font-mono text-slate-400">-124.5</span>
+                </div>
+                <div class="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800">
+                  <div id="barNorth" class="hud-bar bg-blue-500 h-full w-[35%]"></div>
+                </div>
+              </div>
+
+              <div>
+                <div class="flex justify-between text-[11px] mb-1">
+                  <span class="text-slate-300 font-semibold">South</span>
+                  <span id="qSouth" class="font-mono text-slate-400">-210.0</span>
+                </div>
+                <div class="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800">
+                  <div id="barSouth" class="hud-bar bg-blue-500 h-full w-[25%]"></div>
+                </div>
+              </div>
+
+              <div>
+                <div class="flex justify-between text-[11px] mb-1">
+                  <span id="labelEast" class="text-slate-300 font-semibold">East</span>
+                  <span id="qEast" class="font-mono text-slate-400">-450.8</span>
+                </div>
+                <div class="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800">
+                  <div id="barEast" class="hud-bar bg-red-500 h-full w-[10%]"></div>
+                </div>
+              </div>
+
+              <div>
+                <div class="flex justify-between text-[11px] mb-1">
+                  <span id="labelWest" class="text-emerald-400 font-bold">West (Best Action)</span>
+                  <span id="qWest" class="font-mono text-emerald-400 font-bold">+85.4</span>
+                </div>
+                <div class="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800">
+                  <div id="barWest" class="hud-bar bg-emerald-500 h-full w-[85%]"></div>
+                </div>
+              </div>
+            </div>
           </div>
-          <div class="flex items-center gap-1">
-            <span class="w-2 h-2 rounded-full bg-amber-400 inline-block"></span> Retreating Ray
+
+          <!-- Live Feature Telemetry Card -->
+          <div class="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 shadow-sm">
+            <h3 class="text-xs font-extrabold uppercase tracking-wider text-slate-400 mb-3">
+              Active Vision Features
+            </h3>
+            <div class="space-y-1.5 text-xs font-mono">
+              <div class="flex items-center justify-between bg-slate-900/80 px-3 py-1.5 rounded-lg border border-slate-800">
+                <span class="text-slate-400 text-[11px]">ghost-visible-approaching:</span>
+                <span id="featApproaching" class="text-red-400 font-bold">0.00</span>
+              </div>
+              <div class="flex items-center justify-between bg-slate-900/80 px-3 py-1.5 rounded-lg border border-slate-800">
+                <span class="text-slate-400 text-[11px]">trapped-in-dead-end:</span>
+                <span id="featDeadEnd" class="text-slate-400">0.00 (Safe Path)</span>
+              </div>
+              <div class="flex items-center justify-between bg-slate-900/80 px-3 py-1.5 rounded-lg border border-slate-800">
+                <span class="text-slate-400 text-[11px]">closest-food (BFS):</span>
+                <span id="featFood" class="text-emerald-400 font-bold">0.02 (dist 1)</span>
+              </div>
+              <div class="flex items-center justify-between bg-slate-900/80 px-3 py-1.5 rounded-lg border border-slate-800">
+                <span class="text-slate-400 text-[11px]">scared-hunt-signal:</span>
+                <span id="featScared" class="text-cyan-400 font-bold">0.00</span>
+              </div>
+            </div>
           </div>
-          <div class="flex items-center gap-1">
-            <span class="w-2 h-2 rounded-full bg-cyan-400 inline-block"></span> Scared Hunt Ray
+
+          <!-- Real-Time Metrics Counters -->
+          <div class="grid grid-cols-3 gap-3 text-center">
+            <div class="bg-slate-950/70 border border-slate-800 p-3 rounded-2xl">
+              <div class="text-[10px] text-slate-400 uppercase font-semibold">Game Score</div>
+              <div id="scoreVal" class="text-xl font-extrabold text-yellow-400 font-mono mt-0.5">0</div>
+            </div>
+            <div class="bg-slate-950/70 border border-slate-800 p-3 rounded-2xl">
+              <div class="text-[10px] text-slate-400 uppercase font-semibold">Food Left</div>
+              <div id="foodVal" class="text-xl font-extrabold text-emerald-400 font-mono mt-0.5">32</div>
+            </div>
+            <div class="bg-slate-950/70 border border-slate-800 p-3 rounded-2xl">
+              <div class="text-[10px] text-slate-400 uppercase font-semibold">Ghost Distance</div>
+              <div id="ghostDistVal" class="text-xl font-extrabold text-cyan-400 font-mono mt-0.5">6 tiles</div>
+            </div>
           </div>
+
         </div>
-      </div>
-
-      <!-- Right: Live Policy & Vision Features HUD (5 cols) -->
-      <div class="md:col-span-5 flex flex-col gap-2.5">
-        
-        <!-- Live Action & Q-Value Meters -->
-        <div class="bg-[var(--sidebar)]/50 border border-[var(--border)] rounded-xl p-3">
-          <div class="flex items-center justify-between mb-1.5">
-            <h3 class="text-[11px] font-bold uppercase tracking-wider text-[var(--muted-foreground)]">Evaluated Q-Values</h3>
-            <span id="chosenActionTag" class="text-[11px] font-bold px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">
-              Policy: WEST
-            </span>
-          </div>
-
-          <div class="space-y-1.5 text-xs">
-            <div>
-              <div class="flex justify-between text-[10px] mb-0.5">
-                <span class="text-slate-300 font-medium">North</span>
-                <span id="qNorth" class="font-mono text-slate-400">-124.5</span>
-              </div>
-              <div class="w-full bg-slate-800 rounded-full h-1 overflow-hidden">
-                <div id="barNorth" class="hud-bar bg-blue-500 h-full w-[40%]"></div>
-              </div>
-            </div>
-            <div>
-              <div class="flex justify-between text-[10px] mb-0.5">
-                <span class="text-slate-300 font-medium">South</span>
-                <span id="qSouth" class="font-mono text-slate-400">-180.2</span>
-              </div>
-              <div class="w-full bg-slate-800 rounded-full h-1 overflow-hidden">
-                <div id="barSouth" class="hud-bar bg-blue-500 h-full w-[30%]"></div>
-              </div>
-            </div>
-            <div>
-              <div class="flex justify-between text-[10px] mb-0.5">
-                <span id="labelEast" class="text-slate-300 font-medium">East</span>
-                <span id="qEast" class="font-mono text-slate-400">-340.1</span>
-              </div>
-              <div class="w-full bg-slate-800 rounded-full h-1 overflow-hidden">
-                <div id="barEast" class="hud-bar bg-red-500 h-full w-[15%]"></div>
-              </div>
-            </div>
-            <div>
-              <div class="flex justify-between text-[10px] mb-0.5">
-                <span id="labelWest" class="text-emerald-400 font-bold">West</span>
-                <span id="qWest" class="font-mono text-emerald-400 font-bold">+65.8</span>
-              </div>
-              <div class="w-full bg-slate-800 rounded-full h-1 overflow-hidden">
-                <div id="barWest" class="hud-bar bg-emerald-500 h-full w-[80%]"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Vision Feature Activations -->
-        <div class="bg-[var(--sidebar)]/50 border border-[var(--border)] rounded-xl p-3">
-          <h3 class="text-[11px] font-bold uppercase tracking-wider text-[var(--muted-foreground)] mb-2">
-            Vision Feature Activations
-          </h3>
-          <div class="space-y-1 text-[11px] font-mono">
-            <div class="flex items-center justify-between bg-slate-900/60 px-2 py-0.5 rounded border border-slate-800">
-              <span class="text-slate-400">ghost-visible-approaching:</span>
-              <span id="featApproaching" class="text-red-400 font-bold">0.00</span>
-            </div>
-            <div class="flex items-center justify-between bg-slate-900/60 px-2 py-0.5 rounded border border-slate-800">
-              <span class="text-slate-400">trapped-in-dead-end:</span>
-              <span id="featDeadEnd" class="text-slate-400">0.00 (Safe)</span>
-            </div>
-            <div class="flex items-center justify-between bg-slate-900/60 px-2 py-0.5 rounded border border-slate-800">
-              <span class="text-slate-400">closest-food (BFS):</span>
-              <span id="featFood" class="text-emerald-400 font-bold">0.02 (d=1)</span>
-            </div>
-            <div class="flex items-center justify-between bg-slate-900/60 px-2 py-0.5 rounded border border-slate-800">
-              <span class="text-slate-400">scared-hunt-signal:</span>
-              <span id="featScared" class="text-cyan-400 font-bold">0.00</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Metrics -->
-        <div class="grid grid-cols-3 gap-2 text-center">
-          <div class="bg-[var(--card)] border border-[var(--border)] py-1.5 px-2 rounded-lg">
-            <div class="text-[9px] text-[var(--muted-foreground)] uppercase">Score</div>
-            <div id="scoreVal" class="text-sm font-bold text-yellow-400">0</div>
-          </div>
-          <div class="bg-[var(--card)] border border-[var(--border)] py-1.5 px-2 rounded-lg">
-            <div class="text-[9px] text-[var(--muted-foreground)] uppercase">Food Left</div>
-            <div id="foodVal" class="text-sm font-bold text-emerald-400">32</div>
-          </div>
-          <div class="bg-[var(--card)] border border-[var(--border)] py-1.5 px-2 rounded-lg">
-            <div class="text-[9px] text-[var(--muted-foreground)] uppercase">Min Ghost Dist</div>
-            <div id="ghostDistVal" class="text-sm font-bold text-cyan-400">6</div>
-          </div>
-        </div>
-
       </div>
     </div>
-  </div>
+  </main>
 
+  <!-- Performance Benchmarks Section -->
+  <section id="benchmarks" class="relative z-10 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto pb-16">
+    <div class="bg-slate-900/80 border border-slate-800 rounded-3xl p-6 sm:p-8 backdrop-blur-md">
+      <div class="mb-6">
+        <h2 class="text-xl font-bold text-white flex items-center gap-2">
+          <span>📊 Performance Benchmarks</span>
+        </h2>
+        <p class="text-xs text-slate-400 mt-1">
+          Evaluated over 100 test games with exploration turned off ($\epsilon = 0.0$)
+        </p>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs font-mono">
+          <thead class="bg-slate-950 border-b border-slate-800 text-slate-400 uppercase text-[10px]">
+            <tr>
+              <th class="py-3 px-4">Layout</th>
+              <th class="py-3 px-4">Episodes</th>
+              <th class="py-3 px-4">Win Rate</th>
+              <th class="py-3 px-4">Average Score</th>
+              <th class="py-3 px-4">Peak Score</th>
+              <th class="py-3 px-4">Ghost Avoidance Weight</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-800/60 text-slate-300">
+            <tr class="hover:bg-slate-800/30 transition">
+              <td class="py-3 px-4 font-bold text-white">smallClassic (20x7)</td>
+              <td class="py-3 px-4">2,000</td>
+              <td class="py-3 px-4 font-bold text-emerald-400 text-sm">76.0%</td>
+              <td class="py-3 px-4">+767.33</td>
+              <td class="py-3 px-4 text-yellow-400 font-bold">+1,545.00</td>
+              <td class="py-3 px-4 text-red-400">-573.31</td>
+            </tr>
+            <tr class="hover:bg-slate-800/30 transition bg-slate-950/30">
+              <td class="py-3 px-4 font-bold text-white">mediumClassic (20x11)</td>
+              <td class="py-3 px-4">2,000</td>
+              <td class="py-3 px-4 font-bold text-emerald-400 text-sm">86.0% 🔥</td>
+              <td class="py-3 px-4">+1,360.27</td>
+              <td class="py-3 px-4 text-yellow-400 font-bold">+1,913.00</td>
+              <td class="py-3 px-4 text-red-400">-624.94</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Weight Inspector Section -->
+  <section id="weights" class="relative z-10 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto pb-16">
+    <div class="bg-slate-900/80 border border-slate-800 rounded-3xl p-6 sm:p-8 backdrop-blur-md">
+      <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-6">
+        <div>
+          <h2 class="text-xl font-bold text-white flex items-center gap-2">
+            <span>⚖️ Learned Feature Weight Vector</span>
+            <span class="text-xs font-mono px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 font-medium">2,000 Episodes Converged</span>
+          </h2>
+          <p class="text-xs text-slate-400 mt-1">
+            Feature weights discovered automatically through Q-learning TD gradient updates
+          </p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 font-mono text-xs">
+        <div class="p-3.5 bg-slate-950 rounded-xl border border-slate-800 flex justify-between items-center">
+          <span class="text-slate-400">closest-scared-ghost:</span>
+          <span class="text-cyan-400 font-bold">+754.09</span>
+        </div>
+        <div class="p-3.5 bg-slate-950 rounded-xl border border-slate-800 flex justify-between items-center">
+          <span class="text-slate-400">scared-ghost-visible:</span>
+          <span class="text-cyan-400 font-bold">+111.44</span>
+        </div>
+        <div class="p-3.5 bg-slate-950 rounded-xl border border-slate-800 flex justify-between items-center">
+          <span class="text-slate-400">eats-capsule:</span>
+          <span class="text-emerald-400 font-bold">+102.30</span>
+        </div>
+        <div class="p-3.5 bg-slate-950 rounded-xl border border-slate-800 flex justify-between items-center">
+          <span class="text-slate-400">eats-food:</span>
+          <span class="text-emerald-400 font-bold">+96.54</span>
+        </div>
+        <div class="p-3.5 bg-slate-950 rounded-xl border border-slate-800 flex justify-between items-center">
+          <span class="text-slate-400">closest-food:</span>
+          <span class="text-yellow-400 font-bold">-55.43</span>
+        </div>
+        <div class="p-3.5 bg-slate-950 rounded-xl border border-slate-800 flex justify-between items-center">
+          <span class="text-slate-400">ghost-visible-approaching:</span>
+          <span class="text-red-400 font-bold">-76.51</span>
+        </div>
+        <div class="p-3.5 bg-slate-950 rounded-xl border border-slate-800 flex justify-between items-center">
+          <span class="text-slate-400">ghost-3-steps-away:</span>
+          <span class="text-red-400 font-bold">-180.75</span>
+        </div>
+        <div class="p-3.5 bg-slate-950 rounded-xl border border-slate-800 flex justify-between items-center">
+          <span class="text-slate-400">ghost-2-steps-away:</span>
+          <span class="text-red-400 font-bold">-214.37</span>
+        </div>
+        <div class="p-3.5 bg-slate-950 rounded-xl border border-slate-800 flex justify-between items-center">
+          <span class="text-slate-400">trapped-in-dead-end:</span>
+          <span class="text-red-400 font-bold">-291.45</span>
+        </div>
+        <div class="p-3.5 bg-slate-950 rounded-xl border border-slate-800 flex justify-between items-center md:col-span-2 lg:col-span-3">
+          <span class="text-slate-400">ghost-1-step-away (Lethal Avoidance):</span>
+          <span class="text-red-500 font-bold text-sm">-573.31</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Architecture Deep Dive Section -->
+  <section id="architecture" class="relative z-10 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto pb-20">
+    <div class="text-center mb-10">
+      <h2 class="text-2xl sm:text-3xl font-extrabold text-white">How HumanVision AI Operates</h2>
+      <p class="text-slate-400 text-sm mt-2 max-w-xl mx-auto">
+        Combining classic Q-learning with spatial raycasting and graph topology analysis
+      </p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div class="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 backdrop-blur-xs">
+        <div class="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 text-xl font-bold mb-4">
+          ⚡
+        </div>
+        <h3 class="text-base font-bold text-white mb-2">Cardinal Raycasting</h3>
+        <p class="text-xs text-slate-400 leading-relaxed">
+          Casts rays in $N, S, E, W$ until hitting walls. Distinguishes ghosts that are actively approaching vs. retreating, allowing proactive corridor kiting before dangerous encounters occur.
+        </p>
+      </div>
+
+      <div class="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 backdrop-blur-xs">
+        <div class="w-10 h-10 rounded-xl bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center text-yellow-400 text-xl font-bold mb-4">
+          🔄
+        </div>
+        <h3 class="text-base font-bold text-white mb-2">Turn-Aware Topology</h3>
+        <p class="text-xs text-slate-400 leading-relaxed">
+          Performs bounded BFS on the reachable subgraph to tell the difference between an $L$-shaped bend leading to open junctions vs. a sealed cul-de-sac with ghost-blocked exits.
+        </p>
+      </div>
+
+      <div class="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 backdrop-blur-xs">
+        <div class="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 text-xl font-bold mb-4">
+          🎯
+        </div>
+        <h3 class="text-base font-bold text-white mb-2">Multi-Step Gradients</h3>
+        <p class="text-xs text-slate-400 leading-relaxed">
+          Uses true BFS maze geodesic distance to provide continuous danger signals (1-step, 2-step, 3-step) around blind corners, eliminating wall-blindness.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="border-t border-slate-800/80 bg-slate-950/70 py-8 text-center text-xs text-slate-500 relative z-10">
+    <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div>
+        <span class="text-slate-300 font-semibold">Pacman Reinforcement Learning</span> &mdash; Built by <a href="https://github.com/PuneethPujala" target="_blank" class="text-yellow-400 hover:underline font-medium">Puneeth Pujala</a>
+      </div>
+      <div>
+        Powered by Approximate Q-Learning & UC Berkeley AI Foundations
+      </div>
+    </div>
+  </footer>
+
+  <!-- Simulation JavaScript Engine -->
   <script>
     const canvas = document.getElementById('pacmanCanvas');
     const ctx = canvas.getContext('2d');
 
-    const CELL_SIZE = 24;
+    const CELL_SIZE = 26;
     let isPlaying = true;
     let animId = null;
     let tickCount = 0;
-    let speedDelay = 15;
+    let speedDelay = 14;
     let score = 0;
+    let showRaycasts = true;
+    let ghostAIType = 'random';
+    let currentLayoutKey = 'smallClassic';
 
-    // Exact smallClassic layout (20x7)
-    const smallClassicLayout = [
-      "%%%%%%%%%%%%%%%%%%%%",
-      "%......%G  G%......%",
-      "%.%%...%%  %%...%%.%",
-      "%.%o.%........%.o%.%",
-      "%.%%.%.%%%%%%.%.%%.%",
-      "%........P.........%",
-      "%%%%%%%%%%%%%%%%%%%%"
-    ];
+    const layouts = {
+      smallClassic: [
+        "%%%%%%%%%%%%%%%%%%%%",
+        "%......%G  G%......%",
+        "%.%%...%%  %%...%%.%",
+        "%.%o.%........%.o%.%",
+        "%.%%.%.%%%%%%.%.%%.%",
+        "%........P.........%",
+        "%%%%%%%%%%%%%%%%%%%%"
+      ],
+      mediumClassic: [
+        "%%%%%%%%%%%%%%%%%%%%",
+        "%o...%........%....%",
+        "%.%%.%.%%%%%%.%.%%.%",
+        "%.%..............%.%",
+        "%.%.%%.%%  %%.%%.%.%",
+        "%......%G  G%......%",
+        "%.%.%%.%%%%%%.%%.%.%",
+        "%.%..............%.%",
+        "%.%%.%.%%%%%%.%.%%.%",
+        "%....%...P....%...o%",
+        "%%%%%%%%%%%%%%%%%%%%"
+      ],
+      corridorKite: [
+        "%%%%%%%%%%%%%%%%%%%%",
+        "%   P        . G   %",
+        "%%%%%%%%%%%%%%%%%%%%"
+      ],
+      deadEndEscape: [
+        "%%%%%%%%%%%%%%%%%%%%",
+        "%      .           %",
+        "% %%%%%%%%%%%%%%%% %",
+        "% P              G %",
+        "%%%%%%%%%%%%%%%%%%%%"
+      ]
+    };
 
     let grid = [];
     let pacman = { x: 9, y: 5, dir: 'West' };
-    let ghosts = [
-      { x: 8, y: 1, dir: 'West', scared: 0 },
-      { x: 11, y: 1, dir: 'East', scared: 0 }
-    ];
+    let ghosts = [];
     let food = [];
     let capsules = [];
 
-    // Exact final weights learned from 2000 episodes of Q-learning
     const W = {
       ghost_1step: -573.31,
       ghost_2step: -214.37,
       ghost_3step: -180.75,
-      ghost_approaching: -37.84,
-      ghost_retreating: 0.88,
+      ghost_approaching: -76.51,
+      ghost_retreating: 1.04,
       deadend: -291.45,
       closest_food: -55.43,
       eats_food: 96.54,
-      eats_capsule: 47.10,
+      eats_capsule: 102.30,
       closest_scared: 754.09,
       scared_visible: 111.44,
-      bias: 8.85
+      bias: 11.89
     };
 
     function initGame() {
-      grid = smallClassicLayout.map(row => row.split(''));
+      const lay = layouts[currentLayoutKey];
+      grid = lay.map(row => row.split(''));
       food = [];
       capsules = [];
       ghosts = [];
 
-      canvas.width = 20 * CELL_SIZE;
-      canvas.height = 7 * CELL_SIZE;
+      canvas.width = grid[0].length * CELL_SIZE;
+      canvas.height = grid.length * CELL_SIZE;
 
       for (let r = 0; r < grid.length; r++) {
         for (let c = 0; c < grid[0].length; c++) {
@@ -252,7 +579,7 @@
             pacman = { x: c, y: r, dir: 'West' };
             grid[r][c] = ' ';
           } else if (ch === 'G') {
-            ghosts.push({ x: c, y: r, dir: ghosts.length === 0 ? 'West' : 'East', scared: 0 });
+            ghosts.push({ x: c, y: r, dir: ghosts.length % 2 === 0 ? 'West' : 'East', scared: 0 });
             grid[r][c] = ' ';
           } else if (ch === '.') {
             food.push({ x: c, y: r });
@@ -274,7 +601,6 @@
       return grid[y][x] === '%';
     }
 
-    // BFS Maze Distance
     function getMazeDist(x1, y1, x2, y2) {
       if (x1 === x2 && y1 === y2) return 0;
       let q = [[x1, y1, 0]];
@@ -293,7 +619,6 @@
       return 999;
     }
 
-    // Cardinal Raycast
     function castRay(startX, startY, dx, dy) {
       let x = startX;
       let y = startY;
@@ -313,7 +638,6 @@
       }
     }
 
-    // Dead-end pocket analysis
     function isDeadEndPocket(pos) {
       let visited = new Set([`${pos.x},${pos.y}`]);
       let q = [pos];
@@ -358,7 +682,6 @@
 
         let q = W.bias;
 
-        // Ghosts evaluation
         ghosts.forEach(g => {
           const d = getMazeDist(nx, ny, g.x, g.y);
           if (g.scared > 0) {
@@ -368,7 +691,6 @@
             else if (d === 2) q += W.ghost_2step;
             else if (d === 3) q += W.ghost_3step;
 
-            // Raycast approach
             if (ny === g.y) {
               if (a.dx > 0 && g.x > nx && g.dir === 'West') q += (1.0 / Math.max(g.x - nx, 1)) * W.ghost_approaching;
               if (a.dx < 0 && g.x < nx && g.dir === 'East') q += (1.0 / Math.max(nx - g.x, 1)) * W.ghost_approaching;
@@ -376,24 +698,20 @@
           }
         });
 
-        // Dead end check
         if (isDeadEndPocket({ x: nx, y: ny })) {
           const minG = Math.min(...ghosts.map(g => getMazeDist(nx, ny, g.x, g.y)));
           if (minG <= 4) q += W.deadend;
         }
 
-        // Food eating
         if (food.some(f => f.x === nx && f.y === ny)) {
           q += W.eats_food;
         }
 
-        // Closest food
         if (food.length > 0) {
           const minF = Math.min(...food.map(f => getMazeDist(nx, ny, f.x, f.y)));
-          q += (minF / 140.0) * W.closest_food;
+          q += (minF / (grid.length * grid[0].length)) * W.closest_food;
         }
 
-        // Capsule
         if (capsules.some(c => c.x === nx && c.y === ny)) {
           q += W.eats_capsule;
         }
@@ -430,12 +748,11 @@
         score -= 1;
       }
 
-      // Check collision immediately after Pacman moves
       for (let g of ghosts) {
         if (g.x === pacman.x && g.y === pacman.y) {
           if (g.scared > 0) {
             score += 200;
-            g.x = 9;
+            g.x = Math.floor(grid[0].length / 2);
             g.y = 1;
             g.scared = 0;
           } else {
@@ -447,22 +764,19 @@
         }
       }
 
-      // Check food
       const foodIdx = food.findIndex(f => f.x === pacman.x && f.y === pacman.y);
       if (foodIdx !== -1) {
         food.splice(foodIdx, 1);
         score += 10;
       }
 
-      // Check capsule
       const capIdx = capsules.findIndex(c => c.x === pacman.x && c.y === pacman.y);
       if (capIdx !== -1) {
         capsules.splice(capIdx, 1);
         score += 50;
-        ghosts.forEach(g => g.scared = 30);
+        ghosts.forEach(g => g.scared = 35);
       }
 
-      // Move ghosts sequentially with cross-over collision checks
       for (let g of ghosts) {
         if (g.scared > 0) g.scared--;
 
@@ -477,26 +791,31 @@
         ].filter(d => !isWall(g.x + d.dx, g.y + d.dy));
 
         if (dirs.length > 0) {
-          dirs.sort((a, b) => {
-            const da = getMazeDist(g.x + a.dx, g.y + a.dy, pacman.x, pacman.y);
-            const db = getMazeDist(g.x + b.dx, g.y + b.dy, pacman.x, pacman.y);
-            return g.scared > 0 ? db - da : da - db;
-          });
-          // 80% optimal chase/flee, 20% random exploration
-          const chosen = Math.random() < 0.8 ? dirs[0] : dirs[Math.floor(Math.random() * dirs.length)];
-          g.x += chosen.dx;
-          g.y += chosen.dy;
-          g.dir = chosen.dir;
+          if (ghostAIType === 'intelligent') {
+            dirs.sort((a, b) => {
+              const da = getMazeDist(g.x + a.dx, g.y + a.dy, pacman.x, pacman.y);
+              const db = getMazeDist(g.x + b.dx, g.y + b.dy, pacman.x, pacman.y);
+              return g.scared > 0 ? db - da : da - db;
+            });
+            const chosen = Math.random() < 0.8 ? dirs[0] : dirs[Math.floor(Math.random() * dirs.length)];
+            g.x += chosen.dx;
+            g.y += chosen.dy;
+            g.dir = chosen.dir;
+          } else {
+            const chosen = dirs[Math.floor(Math.random() * dirs.length)];
+            g.x += chosen.dx;
+            g.y += chosen.dy;
+            g.dir = chosen.dir;
+          }
         }
 
-        // Check both same-tile collision and crossover path-swap
         const sameTile = (g.x === pacman.x && g.y === pacman.y);
         const pathSwap = (g.x === prevPacX && g.y === prevPacY && pacman.x === prevGX && pacman.y === prevGY);
 
         if (sameTile || pathSwap) {
           if (g.scared > 0) {
             score += 200;
-            g.x = 9;
+            g.x = Math.floor(grid[0].length / 2);
             g.y = 1;
             g.scared = 0;
           } else {
@@ -519,14 +838,15 @@
     function endGame(won) {
       isPlaying = false;
       document.getElementById('gameOverlay').classList.remove('hidden');
-      document.getElementById('overlayTitle').innerText = won ? '🎉 Episode Won!' : '💀 Pacman Died';
-      document.getElementById('overlayTitle').className = won ? 'text-lg font-bold text-emerald-400 mb-0.5' : 'text-lg font-bold text-red-400 mb-0.5';
+      document.getElementById('overlayIcon').innerText = won ? '🎉' : '💀';
+      document.getElementById('overlayTitle').innerText = won ? 'Level Cleared!' : 'Pacman Died';
+      document.getElementById('overlayTitle').className = won ? 'text-xl font-black text-emerald-400 mb-1' : 'text-xl font-black text-red-400 mb-1';
       document.getElementById('overlayScore').innerText = `Final Score: ${score}`;
     }
 
     function updateHUD() {
       const { qVals, bestAct } = evaluatePolicy();
-      document.getElementById('chosenActionTag').innerText = `Policy: ${bestAct ? bestAct.toUpperCase() : 'STOP'}`;
+      document.getElementById('chosenActionTag').innerText = `Action: ${bestAct ? bestAct.toUpperCase() : 'STOP'}`;
 
       ['North', 'South', 'East', 'West'].forEach(act => {
         const val = qVals[act];
@@ -544,10 +864,9 @@
       const minG = ghosts.length > 0 ? Math.min(...ghosts.map(g => getMazeDist(pacman.x, pacman.y, g.x, g.y))) : 0;
       document.getElementById('ghostDistVal').innerText = minG < 100 ? `${minG} tiles` : 'N/A';
 
-      // Raycast feature readout
       const rayEast = castRay(pacman.x, pacman.y, 1, 0);
       const rayWest = castRay(pacman.x, pacman.y, -1, 0);
-      let appText = "0.00";
+      let appText = '0.00';
       if (rayEast.hit === 'ghost' && rayEast.ghost.dir === 'West' && rayEast.ghost.scared === 0) {
         appText = `${(1.0 / rayEast.dist).toFixed(2)} (East d=${rayEast.dist})`;
       } else if (rayWest.hit === 'ghost' && rayWest.ghost.dir === 'East' && rayWest.ghost.scared === 0) {
@@ -556,27 +875,25 @@
       document.getElementById('featApproaching').innerText = appText;
 
       const anyScared = ghosts.some(g => g.scared > 0);
-      document.getElementById('featScared').innerText = anyScared ? "ACTIVE (+768)" : "0.00";
+      document.getElementById('featScared').innerText = anyScared ? 'ACTIVE (+754)' : '0.00';
     }
 
     function render() {
       ctx.fillStyle = '#020617';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Draw Walls
       for (let r = 0; r < grid.length; r++) {
         for (let c = 0; c < grid[0].length; c++) {
           if (grid[r][c] === '%') {
-            ctx.fillStyle = '#1e3a8a';
+            ctx.fillStyle = '#1e293b';
             ctx.fillRect(c * CELL_SIZE + 1, r * CELL_SIZE + 1, CELL_SIZE - 2, CELL_SIZE - 2);
             ctx.strokeStyle = '#3b82f6';
-            ctx.lineWidth = 1;
+            ctx.lineWidth = 1.5;
             ctx.strokeRect(c * CELL_SIZE + 1, r * CELL_SIZE + 1, CELL_SIZE - 2, CELL_SIZE - 2);
           }
         }
       }
 
-      // Draw Food
       food.forEach(f => {
         ctx.fillStyle = '#fde047';
         ctx.beginPath();
@@ -584,7 +901,6 @@
         ctx.fill();
       });
 
-      // Draw Capsules
       capsules.forEach(c => {
         ctx.fillStyle = '#ffffff';
         ctx.beginPath();
@@ -592,45 +908,46 @@
         ctx.fill();
       });
 
-      // Draw Sight Rays
+      if (showRaycasts) {
+        const px = pacman.x * CELL_SIZE + CELL_SIZE / 2;
+        const py = pacman.y * CELL_SIZE + CELL_SIZE / 2;
+        const rays = [{ dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 }];
+
+        rays.forEach(r => {
+          const hit = castRay(pacman.x, pacman.y, r.dx, r.dy);
+          const hx = hit.x * CELL_SIZE + CELL_SIZE / 2;
+          const hy = hit.y * CELL_SIZE + CELL_SIZE / 2;
+
+          ctx.lineWidth = 2;
+          if (hit.hit === 'ghost') {
+            if (hit.ghost.scared > 0) {
+              ctx.strokeStyle = 'rgba(6, 182, 212, 0.95)';
+            } else {
+              const isApproaching = (r.dx > 0 && hit.ghost.dir === 'West') || (r.dx < 0 && hit.ghost.dir === 'East');
+              ctx.strokeStyle = isApproaching ? 'rgba(239, 68, 68, 0.95)' : 'rgba(250, 204, 21, 0.85)';
+            }
+            ctx.setLineDash([4, 4]);
+          } else {
+            ctx.strokeStyle = 'rgba(71, 85, 105, 0.3)';
+            ctx.setLineDash([]);
+          }
+
+          ctx.beginPath();
+          ctx.moveTo(px, py);
+          ctx.lineTo(hx, hy);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        });
+      }
+
       const px = pacman.x * CELL_SIZE + CELL_SIZE / 2;
       const py = pacman.y * CELL_SIZE + CELL_SIZE / 2;
-      const rays = [{ dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 }];
-
-      rays.forEach(r => {
-        const hit = castRay(pacman.x, pacman.y, r.dx, r.dy);
-        const hx = hit.x * CELL_SIZE + CELL_SIZE / 2;
-        const hy = hit.y * CELL_SIZE + CELL_SIZE / 2;
-
-        ctx.lineWidth = 1.5;
-        if (hit.hit === 'ghost') {
-          if (hit.ghost.scared > 0) {
-            ctx.strokeStyle = 'rgba(34, 211, 238, 0.9)';
-          } else {
-            const isApproaching = (r.dx > 0 && hit.ghost.dir === 'West') || (r.dx < 0 && hit.ghost.dir === 'East');
-            ctx.strokeStyle = isApproaching ? 'rgba(239, 68, 68, 0.95)' : 'rgba(251, 191, 36, 0.8)';
-          }
-          ctx.setLineDash([3, 3]);
-        } else {
-          ctx.strokeStyle = 'rgba(100, 116, 139, 0.25)';
-          ctx.setLineDash([]);
-        }
-
-        ctx.beginPath();
-        ctx.moveTo(px, py);
-        ctx.lineTo(hx, hy);
-        ctx.stroke();
-        ctx.setLineDash([]);
-      });
-
-      // Draw Pacman
-      ctx.fillStyle = '#eab308';
+      ctx.fillStyle = '#facc15';
       ctx.beginPath();
       ctx.arc(px, py, CELL_SIZE / 2 - 3, 0.25 * Math.PI, 1.75 * Math.PI);
       ctx.lineTo(px, py);
       ctx.fill();
 
-      // Draw Ghosts
       ghosts.forEach((g, idx) => {
         const gx = g.x * CELL_SIZE + CELL_SIZE / 2;
         const gy = g.y * CELL_SIZE + CELL_SIZE / 2;
@@ -642,7 +959,6 @@
         ctx.lineTo(gx - CELL_SIZE / 2 + 3, gy + CELL_SIZE / 2 - 3);
         ctx.fill();
 
-        // Eyes
         ctx.fillStyle = '#ffffff';
         ctx.beginPath();
         ctx.arc(gx - 2.5, gy - 3, 2.5, 0, Math.PI * 2);
@@ -678,9 +994,49 @@
       document.getElementById('playIcon').innerText = '⏸';
     }
 
-    function setSpeed(val) {
-      speedDelay = parseInt(val);
+    function setSpeed(delay) {
+      speedDelay = delay;
+      ['Slow', 'Normal', 'Fast'].forEach(s => {
+        const btn = document.getElementById(`speed${s}`);
+        if (btn) {
+          btn.className = 'px-2 py-0.5 rounded text-slate-400 hover:text-white';
+        }
+      });
+      if (delay === 28) document.getElementById('speedSlow').className = 'px-2 py-0.5 rounded bg-yellow-400 text-slate-950 font-bold';
+      else if (delay === 14) document.getElementById('speedNormal').className = 'px-2 py-0.5 rounded bg-yellow-400 text-slate-950 font-bold';
+      else if (delay === 6) document.getElementById('speedFast').className = 'px-2 py-0.5 rounded bg-yellow-400 text-slate-950 font-bold';
     }
+
+    function toggleRaycasts() {
+      showRaycasts = !showRaycasts;
+      const dot = document.getElementById('raycastStatusDot');
+      const btn = document.getElementById('raycastToggleBtn');
+      if (showRaycasts) {
+        dot.className = 'w-2 h-2 rounded-full bg-emerald-400 inline-block';
+        btn.querySelector('span:last-child').innerText = 'Raycasts: ON';
+      } else {
+        dot.className = 'w-2 h-2 rounded-full bg-slate-500 inline-block';
+        btn.querySelector('span:last-child').innerText = 'Raycasts: OFF';
+      }
+    }
+
+    function changeLayout(key) {
+      currentLayoutKey = key;
+      document.getElementById('currentMapBadge').innerText = `${key}`;
+      resetGame();
+    }
+
+    function changeGhostAI(ai) {
+      ghostAIType = ai;
+      resetGame();
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        togglePlay();
+      }
+    });
 
     initGame();
     loop();

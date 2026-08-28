@@ -1,80 +1,113 @@
-# Pacman Reinforcement Learning (Approximate Q-Learning)
+# Pacman Reinforcement Learning (Approximate Q-Learning with Human-Like Vision)
 
-This repository contains a full web-integrated implementation of **Pacman Reinforcement Learning** based on **Approximate Q-Learning** with a local FastAPI backend and dynamic frontend testing dashboard. 
+This repository contains an advanced implementation of **Pacman Reinforcement Learning** using **Approximate Q-Learning** with a **Human-Like Vision & Topology Extractor (`HumanVisionExtractor`)**, a standalone interactive HTML5 web visualizer, and test suite.
 
-The reinforcement learning agent was modified and optimized to resolve fundamental algorithmic inefficiencies (including state bootstrapping bugs, feature scaling conflicts, and dead-end trapping). These optimizations raised the agent's win rate on the complex `smallClassic` layout from a baseline of **2%** to an impressive **50%**.
-
----
-
-## Architecture Overview
-
-1.  **AI Engine (`bustersAgents.py`, `backend/engine.py`):**
-    *   Implements the `SavedApproximateQAgent` which uses linear function approximation:
-        $$Q(s, a) = \sum_{i} w_i f_i(s, a)$$
-    *   State space is summarized via hand-engineered features mapped to weight vectors, allowing the agent to generalize to unseen layouts.
-2.  **API Server (`backend/server.py`):**
-    *   Built using FastAPI, exposing REST endpoints to manage layout retrieval, start/step/reset game loop instances, toggle background training threads, and save weights.
-3.  **Frontend Dashboard (`frontend/`):**
-    *   A web-based interface built with vanilla HTML/CSS and JavaScript. Features a real-time visualization of the Pacman board, layout selector, model weight save/download tools, and a training controller.
+By integrating **Cardinal Raycasting**, **Turn-Aware Dead-End Analysis**, and **Multi-Step Maze Distance Gradients**, the agent achieved an **86% Win Rate** on `mediumClassic` and **76% Win Rate** on `smallClassic`.
 
 ---
 
-## Reinforcement Learning Enhancements
+## Performance Scorecard
 
-### 1. Polymorphic Bootstrap Target Fix
-*   **The Problem:** Tabular Q-learning agents retrieve maximum successor values using table lookups (`self.q_table`). The approximate Q-agent inherits from the tabular agent but uses feature-weight linear combinations. The inherited `computeValueFromQValues` was hardcoded to perform tabular lookups, resulting in successor state values returning `0.0` for every step. The agent was only updating weights based on immediate rewards, completely unaware of future steps.
-*   **The Fix:** Updated `computeValueFromQValues` to polymorphically query `self.getQValue(state, action)` for each action. This allows `ApproximateQAgent` to assess future consequences:
-    $$\delta = r + \gamma \max_{a'} Q(s', a') - Q(s, a)$$
-
-### 2. Epsilon & Alpha Decay Schedules
-*   **The Problem:** Linear approximate Q-learning can easily diverge or oscillate wildly under static hyperparameter rates. During training, weights would jump from large positive to negative values from one episode to the next, causing the final model to settle on chaotic policies.
-*   **The Fix:** Implemented exponential decay for the exploration rate ($\epsilon$) and learning rate ($\alpha$) inside the episode-end hook:
-    $$\alpha_t = \alpha_0 \cdot 0.985^t, \quad \epsilon_t = \epsilon_0 \cdot 0.985^t$$
-    This transitions the agent smoothly from broad exploration to fine exploitation, stabilizing weights for clean convergence.
-
-### 3. Hybrid Linear/Non-Linear Features
-*   **The Problem ("Disappearing Feature Weight Decay"):** Utilizing inverse closest-food distance (`1.0 / minDist`) causes a massive, positive feature value to drop abruptly (e.g., from `1.0` to `0.2`) when Pacman eats a pellet and the next closest pellet is far away. This drop creates a large negative TD-error that decays the food-seeking weight, punishing Pacman for eating food.
-*   **The Fix:** Refactored the state extractor to use a **hybrid** design:
-    *   **Linear Manhattan Distance** for global objectives (closest food/capsule distance divided by board area). When food is eaten, the linear increase in distance creates a negligible drop in Q-value, which is easily offset by the positive food reward.
-    *   **Non-Linear Inverse Distance** for local events (active/scared ghost proximity), where threat/chasing gradients must be highly localized.
-
-### 4. Narrow Corridor Danger Feature
-*   **The Problem:** Approximate Q-agents only plan one step ahead, making them highly susceptible to ghost traps in dead-ends or tight corners.
-*   **The Fix:** Implemented a `narrow-corridor-danger` feature that activates if the chosen action places Pacman in a corridor or corner (where `len(legal_actions) <= 2`) and an active ghost is within 3 steps. The agent successfully learns a massive negative weight for this feature, teaching Pacman to steer clear of narrow dead-ends when active ghosts are nearby.
+| Layout | Episodes | Win Rate | Average Score | Peak Score | Key Converged Weight Settings |
+| :--- | :---: | :---: | :---: | :---: | :--- |
+| **`smallClassic`** (20×7) | 2,000 | **76.00%** | `+767.33` | `+1,545.00` | `ghost-1step`: `-573.31`, `dead-end`: `-291.45`, `closest-scared`: `+754.09` |
+| **`mediumClassic`** (20×11) | 2,000 | **86.00%** | `+1,360.27` | `+1,913.00` | `ghost-1step`: `-624.94`, `ghost-2step`: `-337.79`, `eats-capsule`: `+102.30` |
 
 ---
 
-## Performance Results (`smallClassic` Layout)
+## Key AI & Vision Features (`HumanVisionExtractor`)
 
-Evaluated over 50 test games on the `smallClassic` layout (featuring 4 active ghosts and 2 power capsules):
+```
+                          ┌──────────────────────────┐
+                          │   HumanVisionExtractor   │
+                          └─────────────┬────────────┘
+                                        │
+      ┌───────────────────────┬─────────┴───────────────┬────────────────────────┐
+      ▼                       ▼                         ▼                        ▼
+ Cardinal Raycast      Escape Topology           Maze Danger Gradient    Objectives & Hunting
+ • Line-of-sight sight • Differentiates L-turns  • BFS 1-step, 2-step,   • Safe dot eating
+ • Approaching vs.       from true cul-de-sacs     3-step warnings         • Power pellet focus
+   retreating vectors  • Ghost-sealed traps      • Corner threat sensing • Scared ghost hunt
+```
 
-| Agent Configuration | Win Rate | Average Score | Average Steps | Key Converged Weight Settings |
-| :--- | :---: | :---: | :---: | :--- |
-| **Baseline** (Stale Bootstrapping) | **2.00%** | `48.26` | `84.94` | `closest-food`: `+84.43`, `inv-active-ghost`: `+404.07` |
-| **Stage 1 Fix** (Bootstrap Restored) | **38.00%** | `652.08` | `106.12` | `closest-food`: `+95.76`, `inv-active-ghost`: `-105.54` |
-| **Stage 2 Optimized** (Decay + Corridor Danger) | **50.00%** | **`997.04`** | **`94.36`** | `closest-food`: `+48.99`, `narrow-corridor-danger`: `-971.53` |
+### 1. Cardinal Raycasting & Trajectory Matching (`castRay`)
+* Casts visual sight rays in 4 cardinal directions ($N, S, E, W$) until hitting a wall.
+* Checks ghost velocity vectors:
+  * **Approaching Ghosts** (`ghost-visible-approaching = 1.0 / dist`): Triggers immediate retreat when an active ghost enters the same corridor heading toward Pacman.
+  * **Retreating Ghosts** (`ghost-visible-retreating = 1.0 / dist`): Near-neutral penalty for ghosts moving away.
+  * **Scared Ghosts** (`scared-ghost-visible = 1.0 / dist`): High-reward attraction to hunt down edible ghosts during power mode.
+
+### 2. Turn-Aware Dead-End & Escape Analysis (`isTrappedInDeadEnd`)
+* Performs a bounded BFS on the reachable maze subgraph starting at successor $(x', y')$, avoiding ghost threat zones.
+* **Distinguishes L-turns from true cul-de-sacs**: Open corridors that bend/turn but eventually connect to multi-way junctions are classified as **safe escape paths** (`trapped-in-dead-end = 0.0`).
+* **Sealed Cul-de-Sacs**: Closed pockets with 0 alternative exits blocked by an approaching ghost are penalized heavily (`trapped-in-dead-end = 1.0`, weight $\approx -291$).
+
+### 3. Multi-Step Danger Gradient (BFS Maze Distances)
+* Calculates true shortest path distances around blind corners:
+  * `ghost-1-step-away`: Massive penalty ($-573$ to $-624$) preventing immediate collisions.
+  * `ghost-2-steps-away`: Active 2-step avoidance ($-214$ to $-337$).
+  * `ghost-3-steps-away`: Early warning gradient ($-180$ to $-202$).
+
+---
+
+## Converged Weights Overview
+
+```text
+Final Converged Weights (mediumClassic):
+  ghost-1-step-away:           -624.94   (Collision avoidance)
+  ghost-2-steps-away:          -337.79   (High-priority 2-step avoidance)
+  trapped-in-dead-end:         -285.62   (Dead-end pocket penalty)
+  ghost-3-steps-away:          -202.84   (3-step early warning)
+  closest-scared-ghost:        +315.66   (Aggressive hunting in power mode)
+  eats-capsule:                +102.30   (High priority for power pellets)
+  scared-ghost-visible:         +97.29   (Hallway chase reward)
+  ghost-visible-approaching:    -76.51   (Line-of-sight hallway penalty)
+  eats-food:                    +74.83   (Dot clearing reward)
+  closest-food:                 -55.51   (Food proximity attraction)
+  bias:                         +40.86   (Baseline bias)
+  ghost-visible-retreating:      +1.04   (Neutral for ghosts moving away)
+```
+
+---
+
+## Project Structure
+
+```text
+├── featureExtractors.py      # HumanVisionExtractor, RaycastExtractor, SimpleExtractor
+├── bustersAgents.py          # ApproximateQAgent, QLearningAgent with transition updates
+├── test_vision_extractor.py  # Unit test suite verifying raycasting, L-turns, & Q-values
+├── index.html                # Standalone interactive HTML5 visualizer (GitHub Pages ready)
+├── pacman.py                 # Core Berkeley Pacman engine
+├── game.py                   # Game state, grid rules, and collision mechanics
+├── ghostAgents.py            # RandomGhost and DirectionalGhost AI
+├── layouts/                  # smallClassic, mediumClassic, trickyClassic, etc.
+└── backend/ & frontend/      # Optional FastAPI server & dashboard
+```
 
 ---
 
 ## How to Run & Test
 
-### Prerequisites
-*   Python 3.7+
-*   Pip dependencies: `fastapi`, `uvicorn`
-
-### Run Backend Server
-Start the local FastAPI application from the project root:
+### 1. Run the Automated Unit Test Suite
+Verify raycasting, L-turns vs cul-de-sacs, and $Q(\text{Backward}) > Q(\text{Forward})$ kiting:
 ```bash
-python backend/server.py
+python test_vision_extractor.py
 ```
-By default, the server runs on `http://127.0.0.1:8000`.
 
-### Run Frontend Client
-Open the web dashboard in your browser by opening `frontend/index.html`. You can select layouts, adjust hyperparameters, train the model in the background, and load saved weights directly inside the visual Testing Arena.
-
-### Running Automated Evaluation
-To evaluate weights locally in python without running the server:
+### 2. Train & Evaluate with ApproximateQAgent
 ```bash
-# To train and test
-python scratch/train.py
+# Train on smallClassic for 2000 episodes + 100 evaluation games:
+python pacman.py -p ApproximateQAgent -a extractor=HumanVisionExtractor -x 2000 -n 2100 -l smallClassic -q
+
+# Train on mediumClassic for 2000 episodes + 100 evaluation games:
+python pacman.py -p ApproximateQAgent -a extractor=HumanVisionExtractor -x 2000 -n 2100 -l mediumClassic -q
 ```
+
+### 3. Watch Live Desktop GUI Game Window
+```bash
+python pacman.py -p ApproximateQAgent -a extractor=HumanVisionExtractor -x 2000 -n 2005 -l smallClassic --frameTime 0.1
+```
+
+### 4. Interactive Web Visualizer (`index.html`)
+Open [`index.html`](index.html) in any web browser to see the live HTML5 simulation with raycasting lasers, dynamic Q-value meters, and test scenario controls. Deployable directly via **GitHub Pages**.
+
